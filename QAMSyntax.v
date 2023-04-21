@@ -29,8 +29,8 @@ Definition chan_n : Type := nat. (* channel name *)
 Definition qchan : Type := chan_n.
 Definition cchan : Type := chan_n.
 (* Inductive channel:= QC (q : qchan) | CC (c : cchan). *)
-Inductive qmess := UNIT | Mess (m : mess_n) | ChanMu (c : chan_m) | PartM (q : qmess)
-with      chan_m := MChan (c : qchan) (mu : mess)
+Inductive qmess := Unit | Mess (m : mess_n) | ChanM (c : chan_m) | PartM (q : qmess)
+with      chan_m := ChM (c : qchan) (mu : mess)
 with      cmess := MeasureQ (q : qmess)
 with      mess   := QtM (q: qmess) | CcM (c: cmess).
 
@@ -52,9 +52,77 @@ Inductive memb := CtxM (r : rmemb) (phi : contexts) | ALock (r : process) (t : r
 
 
 (***      Semantics   ***)
-Fixpoint FC (cx : contexts) :=
+
+(** Free Channel **)
+Fixpoint FC_con (cx : contexts) :=
   match cx with
   | [] => []
-  | ((RnmC c (MChan d m)) :: t) => d :: (FC t)
+  | ((RnmC c (ChM d m)) :: t) => c :: d :: (FC_con t)
   end.
+
+Fixpoint FC_qmess (q : qmess) :=
+  match q with
+  | Unit | Mess _ => []
+  | ChanM (ChM c mu) => c :: (FC_mess mu)
+  | PartM q => FC_qmess q
+  end
+with FC_mess (mu : mess) :=
+  match mu with
+  | CcM _ => []
+  | QtM q => FC_qmess q
+  end.
+
+Definition FC_action (a :action) :=
+       match a with
+       | CreatC c | QSwap c | GEncode c _ | GDecode c _ | Trans c _ => [c]
+       | CSend _ _ | CRecv _ _ => []
+       | LEncode q m _ => (FC_qmess q) ++ (FC_mess m)
+       | LDecode q _ => FC_qmess q
+ 
+end.
+
+Fixpoint FC_process (r : process) :=
+  match r with
+  | Nil => []
+  | AR a p =>  (FC_process p) ++ (FC_action a)
+  | Choice p q => (FC_process p) ++ (FC_process q)
+  | Rept p => FC_process p
+  end.
+
+
+(** Message Algebra **)
+Fixpoint eq_qmess (q1 : qmess) (q2 : qmess) :=
+  match q1, q2 with
+  | Unit, Unit => true
+  | Mess n1, Mess n2 => Nat.eqb n1 n2
+  | ChanM (ChM c1 m1), ChanM (ChM c2 m2) => if Nat.eqb c1 c2 then eq_mess m1 m2 else false
+  | PartM q1, PartM q2 => eq_qmess q1 q2
+  | _ , _  => false
+  end
+with eq_cmess (c1 : cmess) (c2 : cmess) :=
+       match c1, c2 with
+       | MeasureQ q1, MeasureQ q2 => eq_qmess q1 q2
+       end
+with eq_mess (m1 : mess) (m2 : mess) :=
+       match m1, m2 with
+       | QtM q1, QtM q2 => eq_qmess q1 q2
+       | CcM c1, CcM c2 => eq_cmess c1 c2
+       | _, _ => false
+      end.
+                                                                      
+Definition recover_mess m1 m2 :=
+  match m1, m2 with
+  | QtM q, QtM Unit => QtM q
+  | QtM Unit, QtM q => QtM q
+  | CcM (MeasureQ q1), QtM q2 => if eq_qmess q1 q2 then QtM q1 else QtM Unit 
+  | QtM q1, CcM (MeasureQ q2) => if eq_qmess q1 q2 then QtM q1 else QtM Unit
+  | _, _ => QtM Unit
+  end.
+
+(** Eq relation **)
+Print process.
+Print rmemb.
+Print memb.
+
+(** Semantics **)
 
