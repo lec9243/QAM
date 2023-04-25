@@ -1,3 +1,4 @@
+Require Import PeanoNat Permut Setoid.
 Require Import List.
 Import ListNotations.
 (**** Untilities ****)
@@ -48,11 +49,11 @@ Inductive process := Nil | AR (a : action) (r : process) | Choice (p : process) 
 
 Definition rmemb := list process.
 
-Inductive memb := CtxM (r : rmemb) (phi : contexts) | ALock (r : process) (t : rmemb) | ActM (p : memb) (c : renamedC) (Q: memb). 
+Inductive memb := CtxM (r : rmemb) (phi : contexts) | ALock (r : process) (t : rmemb) | ActM (p : memb) (c : renamedC) (Q: memb) | Seq (p : memb) (q : memb). 
+
 
 
 (***      Semantics   ***)
-
 (** Free Channel **)
 Fixpoint FC_con (cx : contexts) :=
   match cx with
@@ -123,6 +124,9 @@ Definition recover_mess m1 m2 :=
 Print process.
 Print rmemb.
 Print memb.
+(*
+Inductive eq_memb : memb -> memb -> Prop :=
+  *)
 
 (** Semantics **)
 
