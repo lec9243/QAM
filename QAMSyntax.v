@@ -35,9 +35,9 @@ with      chan_m := ChM (c : qchan) (mu : mess)
 with      cmess := MeasureQ (q : qmess)
 with      mess   := QtM (q: qmess) | CcM (c: cmess).
 
-Inductive renamedC := RnmC (c : chan_n) (m : chan_m).
+Inductive shareC := ShareC (c : chan_n) (m : chan_m).
 
-Definition contexts  := list renamedC.
+Definition contexts  := list shareC.
 
 Inductive action := CreatC (c : qchan) | QSwap (c : qchan)
                | CSend (cc : cchan) (cm : cmess) | CRecv (cc : cchan) (x : mess_n)
@@ -49,7 +49,9 @@ Inductive process := Nil | AR (a : action) (r : process) | Choice (p : process) 
 
 Definition rmemb := list process.
 
-Inductive memb := CtxM (r : rmemb) (phi : contexts) | ALock (r : process) (t : rmemb) | ActM (p : memb) (c : renamedC) (Q: memb) | Seq (p : memb) (q : memb). 
+Inductive memb := CtxM (r : rmemb) (phi : contexts) | ALock (r : process) (t : rmemb) | ActM (p : memb) (c : shareC) (Q: memb).
+
+Definition config := list memb.
 
 
 
@@ -58,7 +60,7 @@ Inductive memb := CtxM (r : rmemb) (phi : contexts) | ALock (r : process) (t : r
 Fixpoint FC_con (cx : contexts) :=
   match cx with
   | [] => []
-  | ((RnmC c (ChM d m)) :: t) => c :: d :: (FC_con t)
+  | ((ShareC c (ChM d m)) :: t) => c :: d :: (FC_con t)
   end.
 
 Fixpoint FC_qmess (q : qmess) :=
