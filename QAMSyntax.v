@@ -40,16 +40,16 @@ Inductive shareC := ShareC (c : chan_n) (m : chan_m).
 Definition contexts  := list shareC.
 
 Inductive action := CreatC (c : qchan) | QSwap (c : qchan)
-               | CSend (cc : cchan) (cm : cmess) | CRecv (cc : cchan) (x : mess_n)
-               | LEncode (q : qmess) (mu : mess) (x : mess_n) | LDecode (q : qmess) (x : mess_n)
-               | GEncode (c : qchan) (x : mess_n) | GDecode (c : qchan) (x : mess_n)
-               | Trans (c : qchan) (x : mess_n).
+               | CSend (cc : cchan) (cm : cmess) | CRecv (cc : cchan) (x : var)
+               | LEncode (q : qmess) (mu : mess) (x : var) | LDecode (q : qmess) (x : var)
+               | GEncode (c : qchan) (x : mess_n) | GDecode (c : qchan) (x : var)
+               | Trans (c : qchan) (x : var).
 
 Inductive process := Nil | AR (a : action) (r : process) | Choice (p : process) (r : process) | Rept (r : process).
 
 Definition rmemb := list process.
 
-Inductive memb := CtxM (r : rmemb) (phi : contexts) | ALock (r : process) (t : rmemb) | ActM (p : memb) (c : shareC) (Q: memb).
+Inductive memb := CtxM (r : rmemb) (phi : contexts) | ALock (r : process) (t : memb) | ActM (p : memb) (c : shareC) (Q: memb).
 
 Definition config := list memb.
 
@@ -122,13 +122,25 @@ Definition recover_mess m1 m2 :=
   | _, _ => QtM Unit
   end.
 
-(** Eq relation **)
-Print process.
-Print rmemb.
-Print memb.
-(*
-Inductive eq_memb : memb -> memb -> Prop :=
-  *)
+(** Op Sem **)
+Fixpoint replace_mess (p : process) (x: var) (m : mess) : process := p. (*TODO*)
 
-(** Semantics **)
+Inductive process_sem : process -> rmemb -> Prop :=
+| choose_l : forall p1 p2,  process_sem (Choice p1 p2) [p1]
+| choose_r : forall p1 p2, process_sem (Choice p1 p2) [p2]
+| mt : forall p1,  process_sem (Rept p1) [p1; p1]
+| nt : forall p1,  process_sem (Rept p1) [Nil].
+
+
+Inductive qam_sem : config -> config -> Prop :=
+| mem_split : forall (p1 : process) (p2 : rmemb), qam_sem [(CtxM (p1 :: p2) [])] [(CtxM [p1] []); (CtxM p2 [])]
+(* | cohere : forall
+| decohere :
+| encode :
+| decode :
+| assemble
+| extract : *) 
+| transfer : forall m c d x p mb1 mb2, qam_sem [(ActM (ALock (AR (Trans d x) p) mb1) (ShareC c (ChM d m)) mb2)]  [(ALock (replace_mess p x m) mb1); mb2] 
+(*| commu
+| swap*) .  
 
