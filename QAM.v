@@ -15,268 +15,110 @@ Delimit Scope exp_scope with exp.
 Local Open Scope exp_scope.
 Local Open Scope nat_scope.
 
+Open Scope ucom.
 
-Inductive exp := VC (c: SKIP (p:posi) | X (p:posi) | CU (p:posi) (e:exp)
-        | RZ (q:nat) (p:posi) (* 2 * PI * i / 2^q *)
-        | RRZ (q:nat) (p:posi) 
-        | SR (q:nat) (x:var) (* a series of RZ gates for QFT mode from q down to b. *)
-        | SRR (q:nat) (x:var) (* a series of RRZ gates for QFT mode from q down to b. *)
-        (*| HCNOT (p1:posi) (p2:posi) *)
-        | Lshift (x:var)
-        | Rshift (x:var)
-        | Rev (x:var)
-        | QFT (x:var) (b:nat) (* H on x ; CR gates on everything within (size - b). *)
-        | RQFT (x:var) (b:nat)
-       (* | H (p:posi) *)
-        | Seq (s1:exp) (s2:exp).
+(* This file defines the syntax of Quantum Abstract Machine.*)
+(**************** Data Type ********************** *
+Var                        x,y
 
-Inductive type := Had (b:nat) | Phi (b:nat) | Nor.
+Quantum Channel            c,d
+Classical Channel          a
+Projective Channel         hat_c, hat_d
+Quantum Related Channel    α := c | hat_c
+All Channel                δ := α | a
 
-Notation "p1 ; p2" := (Seq p1 p2) (at level 50) : exp_scope.
+Message Name               e
+Quantum Message            q := unit | e | c.μ | hat_c.q | †q
+Classical Message          ι := hat_q | a.ι | hat_c.ι | †ι 
+All Message                μ := q | ι
 
-Fixpoint exp_elim (p:exp) :=
-  match p with
-  | CU q p => match exp_elim p with
-                 | SKIP a => SKIP a 
-                 | p' => CU q p'
-                 end
-  | Seq p1 p2 => match exp_elim p1, exp_elim p2 with
-                  | SKIP _, p2' => p2'
-                  | p1', SKIP _ => p1'
-                  | p1', p2' => Seq p1' p2'
-                  end
-  | _ => p
-  end.
+Channels and Message       κ := μ | δ
+************************************************** *)
+(***      Data type    ***)
+Definition var : Type := nat.
 
-Definition Z (p:posi) := RZ 1 p.
+Definition q_ch : Type := nat.
+Definition c_ch : Type := nat.
+Inductive  proj_ch : Type := ProjC (c : q_ch).
 
-Fixpoint inv_exp p :=
-  match p with
-  | SKIP a => SKIP a
-  | X n => X n
-  | CU n p => CU n (inv_exp p)
-  | SR n x => SRR n x
-  | SRR n x => SR n x
-  | Lshift x => Rshift x
-  | Rshift x => Lshift x
-  | Rev x => Rev x
- (* | HCNOT p1 p2 => HCNOT p1 p2 *)
-  | RZ q p1 => RRZ q p1
-  | RRZ q p1 => RZ q p1
-  | QFT x b => RQFT x b
-  | RQFT x b => QFT x b
-  (*| H x => H x*)
-  | Seq p1 p2 => inv_exp p2; inv_exp p1
-   end.
+Inductive qrel_ch := Qch (c : q_ch) | QPch (c : proj_ch).
+Inductive all_ch := QRch (c : qrel_ch) | Cch (a: c_ch). 
 
+Definition mess_n : Type := nat.
+Inductive  q_mess := UNIT | Mess (e: mess_n) | ChMess (c: q_ch) (m: all_mess) | PjMess (pc: proj_ch) (q: q_mess) | DagQ (q: q_mess)
+with       c_mess := HatQ (q: q_mess) | CChMess (a: c_ch) (i: c_mess) | DagC (i: c_mess)
+with       all_mess := Qmess (q: q_mess) | Cmess (c: c_mess).
 
-Fixpoint GCCX' x n size :=
-  match n with
-  | O | S O => X (x,n - 1)
-  | S m => CU (x,size-n) (GCCX' x m size)
-  end.
-Definition GCCX x n := GCCX' x n n.
+Inductive all_mess_ch := C (d: all_ch) | M (m: all_mess).
 
-Fixpoint nX x n := 
-   match n with 0 => X (x,0)
-            | S m => X (x,m); nX x m
-   end.
+(******************* Syntax ************************ *
+Resources         ϕ := c.μ | hat_c.μ | unit      
+Action            A := νc | a!ι | δ?(x) | α◃κ | c▹(x)
+Process           R,T := 0 | AR | R+T | !R
+Raw Membrane      M,N := R | ϕ
+Membrane          P,Q := {|Bar_M|} | R<ϕ|P | P[ϕ]Q
+************************************************** *)
+(***      Syntax     ***)
+Inductive resource := ChMessR (c: q_ch) (m: all_mess) | PJMessR (pc: proj_ch) (m: all_mess) | U.
 
-(* Grover diffusion operator. *)
-(*
-Definition diff_half (x c:var) (n:nat) := H x ; H c ;  ((nX x n; X (c,0))). 
+Inductive action := CreatC (c: q_ch) | CSend (a: c_ch) (i: c_mess) | Recv (d: all_ch) (x: var) | Encode (al: qrel_ch) (k: all_mess_ch) | Decode (c: q_ch) (x: var). 
 
-Definition diff_1 (x c :var) (n:nat) :=
-  diff_half x c n ; ((GCCX x n)) ; (inv_exp (diff_half x c n)).
-*)
-(*The second implementation of grover's diffusion operator.
-  The whole circuit is a little different, and the input for the diff_2 circuit is asssumed to in Had mode. *)
-(*
-Definition diff_2 (x c :var) (n:nat) :=
-  H x ; ((GCCX x n)) ; H x.
+Inductive process := Nil | AR (a: action) (r: process) | Choice (r: process) (t: process) | Rept (r: process).
 
-Fixpoint is_all_true C n :=
-  match n with 0 => true
-           | S m => C m && is_all_true C m
-  end.
-
-Definition const_u (C :nat -> bool) (n:nat) c := if is_all_true C n then ((X (c,0))) else SKIP (c,0).
-
-Fixpoint niter_prog n (c:var) (P : exp) : exp :=
-  match n with
-  | 0    => SKIP (c,0)
-  | 1    => P
-  | S n' => niter_prog n' c P ; P
-  end.
-
-Definition body (C:nat -> bool) (x c:var) (n:nat) := const_u C n c; diff_2 x c n.
-
-Definition grover_e (i:nat) (C:nat -> bool) (x c:var) (n:nat) := 
-        H x; H c ; ((Z (c,0))) ; niter_prog i c (body C x c n).
-*)
-(** Definition of Deutsch-Jozsa program. **)
-(*
-Definition deutsch_jozsa (x c:var) (n:nat) :=
-  ((nX x n; X (c,0))) ; H x ; H c ; ((X (c,0))); H c ; H x.
-*)
-
-
-(* H; CR; ... Had(0)  H (1) Had(1) ; CR; H(2);; CR. *)
+Definition m_name := nat.
+Inductive memb := Memb (m: m_name) (l : list process) (r: list resource).
 
 Require Import Coq.FSets.FMapList.
 Require Import Coq.FSets.FMapFacts.
 Require Import Coq.Structures.OrderedTypeEx.
-Module Env := FMapList.Make Nat_as_OT.
-Module EnvFacts := FMapFacts.Facts (Env).
-
-Definition env := Env.t type.
-Definition empty_env := @Env.empty type.
 
 
 (* Defining program semantic functions. *)
-Definition put_cu (v:val) (b:bool) :=
-    match v with nval x r => nval b r | a => a end.
-
-Definition get_cua (v:val) := 
-    match v with nval x r => x | _ => false end.
-
-
-Lemma double_put_cu : forall (f:posi -> val) x v v', put_cu (put_cu (f x) v) v' = put_cu (f x) v'.
-Proof.
-  intros.
-  unfold put_cu.
-  destruct (f x). easy. easy.
-Qed.
-
-Definition get_cus (n:nat) (f:posi -> val) (x:var) := 
-          fun i => if i <? n then (match f (x,i) with nval b r => b | _ => false end) else allfalse i.
-
-Definition rotate (r :rz_val) (q:nat) := addto r q.
-
-Definition times_rotate (v : val) (q:nat) := 
-     match v with nval b r => if b then nval b (rotate r q) else nval b r
-                  | qval rc r =>  qval rc (rotate r q)
-     end.
-
-Fixpoint sr_rotate' (st: posi -> val) (x:var) (n:nat) (size:nat) :=
-   match n with 0 => st
-              | S m => (sr_rotate' st x m size)[(x,m) |-> times_rotate (st (x,m)) (size - m)]
-   end.
-Definition sr_rotate st x n := sr_rotate' st x (S n) (S n).
-
-Definition r_rotate (r :rz_val) (q:nat) := addto_n r q.
-
-Definition times_r_rotate (v : val) (q:nat) := 
-     match v with nval b r =>  if b then nval b (r_rotate r q) else nval b r
-                  | qval rc r =>  qval rc (r_rotate r q)
-     end.
-
-Fixpoint srr_rotate' (st: posi -> val) (x:var) (n:nat) (size:nat) :=
-   match n with 0 => st
-              | S m => (srr_rotate' st x m size)[(x,m) |-> times_r_rotate (st (x,m)) (size - m)]
-   end.
-Definition srr_rotate st x n := srr_rotate' st x (S n) (S n).
-
-
-Definition exchange (v: val) :=
-     match v with nval b r => nval (¬ b) r
-                  | a => a
-     end.
-
-Fixpoint lshift' (n:nat) (size:nat) (f:posi -> val) (x:var) := 
-   match n with 0 => f[(x,0) |-> f(x,size)]
-             | S m => ((lshift' m size f x)[ (x,n) |-> f(x,m)])
-   end.
-Definition lshift (f:posi -> val) (x:var) (n:nat) := lshift' (n-1) (n-1) f x.
-
-Fixpoint rshift' (n:nat) (size:nat) (f:posi -> val) (x:var) := 
-   match n with 0 => f[(x,size) |-> f(x,0)]
-             | S m => ((rshift' m size f x)[(x,m) |-> f (x,n)])
-   end.
-Definition rshift (f:posi -> val) (x:var) (n:nat) := rshift' (n-1) (n-1) f x.
-
-(*
-Inductive varType := SType (n1:nat) (n2:nat).
-
-Definition inter_env (enva: var -> nat) (x:var) :=
-             match  (enva x) with SType n1 n2 => n1 + n2 end.
-*)
-(*
-Definition hexchange (v1:val) (v2:val) :=
-  match v1 with hval b1 b2 r1 => 
-    match v2 with hval b3 b4 r2 => if eqb b3 b4 then v1 else hval b1 (¬ b2) r1
-                | _ => v1
-    end
-             | _ => v1
-  end.
-*)
-
-Definition reverse (f:posi -> val) (x:var) (n:nat) := fun (a: var * nat) =>
-             if ((fst a) =? x) && ((snd a) <? n) then f (x, (n-1) - (snd a)) else f a.
-
-(* Semantics function for QFT gate. *)
-Definition seq_val (v:val) :=
-  match v with nval b r => b
-             | _ => false
+Definition get_memb_info (menv: m_name -> nat) (m1: memb) (m2: memb) :=
+  match m1, m2 with
+  |(Memb mn1 _ _), (Memb mn2 _ _) => (menv mn1, menv mn2)
   end.
 
-Fixpoint get_seq (f:posi -> val) (x:var) (base:nat) (n:nat) : (nat -> bool) :=
-     match n with 0 => allfalse
-              | S m => fun (i:nat) => if i =? (base + m) then seq_val (f (x,base+m)) else ((get_seq f x base m) i)
-     end.
 
-Definition up_qft (v:val) (f:nat -> bool) :=
-   match v with nval b r => qval r f
-              | a => a
-   end.
+ (* return circuit *)
+Fixpoint eval_process (p1: memb) (p2: memb) (idx: nat*nat) (n: nat) (b: bool): (memb * memb * bool * resource) * base_ucom (2*n) :=
+  match p1, p2 with
+  |(Memb mn1 _ _), (Memb mn2 _ _) => (((Memb mn1 [] []), (Memb mn2 [] []), b, U), H 0; H 1)
+end.
 
-Definition lshift_fun (f:nat -> bool) (n:nat) := fun i => f (i+n).
-
-(*A function to get the rotation angle of a state. *)
-Definition get_r (v:val) :=
-   match v with nval x r => r
-              | qval rc r => rc
-   end.
-
-
-Fixpoint assign_r (f:posi -> val) (x:var) (r : nat -> bool) (n:nat) := 
-    match n with 0 => f
-              | S m => (assign_r f x r m)[(x,m) |-> up_qft (f (x,m)) (lshift_fun r m)]
-    end.
-
-Definition up_h (v:val)  :=
-   match v with nval true r => qval r (rotate allfalse 1)
-              | nval false r => qval r allfalse
-              | qval r f => nval (f 0) r
-   end.
-
-Fixpoint assign_h (f:posi -> val) (x:var) (n:nat) (i:nat) := 
-   match i with 0 => f
-          | S m => (assign_h f x n m)[(x,n+m) |-> up_h (f (x,n+m))]
+(* Definition update_menv (m1: m_name) (m2: m_name) := m_name -> nat. *)
+  
+(* return circuit *)
+Program Fixpoint eval_memb (menv: m_name -> nat) (update_menv: (m_name -> nat) -> (m_name-> nat)) (exp : memb * memb * bool * resource) (n: nat) : base_ucom (2*n) :=
+  match exp with
+  |((Memb _ [] _), (Memb _ [] _), _, _) =>  ID 0
+  |((Memb mn1 (h::l) _) as m1, (Memb mn2 (h1::l1) _) as m2, _, _) =>
+     (match eval_process m1 m2 (get_memb_info menv m1 m2) n true with
+      |(exp', c) => c; (eval_memb (update_menv menv) update_menv exp' n)
+      end )
+  |((Memb mn1 []  _) as m1, (Memb mn2 (h1::l1) _) as m2, _, _) => ID 0
+  |((Memb mn1 (h::l) _) as m1, (Memb mn2 []  _) as m2, _, _) => ID 0
   end.
 
-Definition turn_qft (st : posi -> val) (x:var) (b:nat) (rmax : nat) := 
-       assign_h (assign_r st x (get_cus b st x) b) x b (rmax - b).
 
 
-(* Semantic function for RQFT gate. *)
-Fixpoint assign_seq (f:posi -> val) (x:var) (vals : nat -> bool) (n:nat) := 
-   match n with 0 => f
-              | S m => (assign_seq f x vals m)[(x,m) |-> nval (vals m) (get_r (f (x,m)))]
-   end.
 
-Fixpoint assign_h_r (f:posi -> val) (x:var) (n:nat) (i:nat) := 
-   match i with 0 => f
-          | S m => (assign_h_r f x n m)[(x,n+m) |-> up_h (f (x,n+m))]
-  end.
 
-Definition get_r_qft (f:posi -> val) (x:var) :=
-      match f (x,0) with qval rc g => g
-                      | _ => allfalse
-      end.
 
-Definition turn_rqft (st : posi -> val) (x:var) (b:nat) (rmax : nat) := 
-           assign_h_r (assign_seq st x (get_r_qft st x) b) x b (rmax - b).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 (* This is the semantics for basic gate set of the language. *)
