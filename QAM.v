@@ -89,17 +89,17 @@ end.
 (* Definition update_menv (m1: m_name) (m2: m_name) := m_name -> nat. *)
   
 (* return circuit *)
-Program Fixpoint eval_memb (menv: m_name -> nat) (update_menv: (m_name -> nat) -> (m_name-> nat)) (exp : memb * memb * bool * resource) (n: nat) : base_ucom (2*n) :=
-  match exp with
-  |((Memb _ [] _), (Memb _ [] _), _, _) =>  ID 0
-  |((Memb mn1 (h::l) _) as m1, (Memb mn2 (h1::l1) _) as m2, _, _) =>
-     (match eval_process m1 m2 (get_memb_info menv m1 m2) n true with
-      |(exp', c) => c; (eval_memb (update_menv menv) update_menv exp' n)
-      end )
-  |((Memb mn1 []  _) as m1, (Memb mn2 (h1::l1) _) as m2, _, _) => ID 0
-  |((Memb mn1 (h::l) _) as m1, (Memb mn2 []  _) as m2, _, _) => ID 0
+Fixpoint eval_pl (menv: m_name -> nat) (update_menv: (m_name -> nat) -> (m_name-> nat)) (p1: list process) (p2: list process) (r1: list resource) (r2: list resource) (mn1: m_name) (mn2: m_name) (b: bool)  (r:resource) (n: nat)  : base_ucom (2*n) :=
+  match p1, p2 with
+  |[], _ => ID 0
+  |_, [] => ID 0
+  |h::l, h1::l2 => eval_pl menv update_menv l l2 r1 r2 mn1 mn2 b r n
   end.
 
+Definition eval_memb (menv: m_name -> nat) (update_menv: (m_name -> nat) -> (m_name-> nat)) (m1: memb) (m2: memb) (b: bool)  (r:resource) (n: nat)  : base_ucom (2*n) :=
+  match m1, m2 with
+  |(Memb mn1 p1 r1), (Memb mn2 p2 r2) => eval_pl menv update_menv p1 p2 r1 r2 mn1 mn2 b r n
+end.
 
 
 
